@@ -8,6 +8,7 @@ import json
 import os
 import pywt
 import pywt.data
+from datetime import datetime
 #import firebase_admin
 from configparser import ConfigParser
 from fastai.vision.all import *
@@ -77,12 +78,13 @@ api_key, api_secret, url, ws_url = get_params()
 model = load_learner(fname='model.pkl', cpu=True)
 
 def predict(input):
-    prediction, t_index, t_confidence_array = model.predict(get_input_image(input))
-    index = t_index.detach().cpu().numpy()
-    confidence_array = t_confidence_array.detach().cpu().numpy()
-    confidence = confidence_array[index]
-    print(prediction, confidence)
-    return prediction, confidence
+    with model.no_bar():
+        prediction, t_index, t_confidence_array = model.predict(get_input_image(input))
+        index = t_index.detach().cpu().numpy()
+        confidence_array = t_confidence_array.detach().cpu().numpy()
+        confidence = confidence_array[index]
+        print(prediction, confidence)
+        return prediction, confidence
 
 def get_stops(prediction, price):
     stop_loss_shift = int(price / 100.0 * STOP_LOSS)
@@ -119,18 +121,43 @@ def run_algorithm():
     prediction, confidence = predict(input)
     if confidence >= THRESHOLD and prediction != 'wait':
         new_order_params = get_new_order_params(prediction, price)
-        print('I would open a new order with params:', new_order_params)
+        now = datetime.now()
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print(dt_string, ': I would open a new order with params:', new_order_params)
         #response = rest_client.new_order(**new_order_params['binance_order'])
         #print(response)
         #status = response['status']
         #if status == 'FILLED':
         #    opened_order = new_order_params
 
+
+def maybe_close_opened_order(price):
+    metadata = opened_order['metadata']
+    side = metadata['prediction']
+    stop_loss = metadata['stop_loss']
+    stop_profit = metadata['stop_profit']
+    if side == 'buy':
+        if price >= stop_profit:
+            print('Closing buy order with profit')
+            opened_order = {}
+        if price <= stop_loss:
+            print('Closing buy order with loss')
+            opened_order = {}
+    if side == 'sell':
+        if price <= stop_profit:
+            print('Closing sell order with profit')
+            opened_order = {}
+        if price >= stop_loss:
+            print('Closing sell order with loss')
+            opened_order = {}
+
 def message_handler(_, message):
     parsed = json.loads(message)
     if 'e' in parsed:  # kline subscription message
         k = parsed['k']
         if k['x'] == True:  # kline is closed
+            if opened_order != {}:
+                maybe_close_opened_order(float(k['c']))
             if opened_order == {}:
                 run_algorithm()
 
@@ -141,3 +168,6 @@ def get_balance():
     print(rest_client.account())
 
 ws_client.kline(symbol=SYMBOL, interval=INTERVAL)
+
+
+#python3 trade.py > log.txt
