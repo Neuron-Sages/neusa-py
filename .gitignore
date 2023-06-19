@@ -3,3 +3,4 @@ config.init
 /images
 model.pkl
 log.txt
+/.vscode
