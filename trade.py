@@ -8,6 +8,7 @@ import json
 import os
 import pywt
 import pywt.data
+import schedule
 from datetime import datetime
 #import firebase_admin
 from configparser import ConfigParser
@@ -140,7 +141,7 @@ def run_algorithm():
             new_metadata = new_order_params['metadata']
             new_side = new_metadata['prediction']
             new_price = new_metadata['price']
-            if old_side != new_side:
+            if old_side != new_side and new_side != 'wait':
                 side = old_side
                 price = new_price
                 if side == 'buy':
@@ -170,58 +171,10 @@ def run_algorithm():
         #if status == 'FILLED':
         #    opened_order = new_order_params
 
-def maybe_close_opened_order(price):
-    global opened_order
-    global total_loss_orders_count
-    global total_profit_orders_count
-    metadata = opened_order['metadata']
-    side = metadata['prediction']
-    stop_loss = metadata['stop_loss']
-    stop_profit = metadata['stop_profit']
-    if side == 'buy':
-        if price >= stop_profit:
-            print('Closing buy order with profit')
-            total_profit_orders_count = 1 + total_profit_orders_count
-            opened_order = None
-        if price <= stop_loss:
-            print('Closing buy order with loss')
-            total_loss_orders_count = 1 + total_loss_orders_count
-            opened_order = None
-    if side == 'sell':
-        if price <= stop_profit:
-            print('Closing sell order with profit')
-            total_profit_orders_count = 1 + total_profit_orders_count
-            opened_order = None
-        if price >= stop_loss:
-            print('Closing sell order with loss')
-            total_loss_orders_count = 1 + total_loss_orders_count
-            opened_order = None
-
-def message_handler(_, message):
-    global opened_order
-    parsed = json.loads(message)
-    if 'e' in parsed:  # kline subscription message
-        k = parsed['k']
-        #if opened_order != None:
-        #    maybe_close_opened_order(float(k['c']))
-        if k['x'] == True:  # kline is closed
-            #if opened_order == None:
-            run_algorithm()
-
-def on_ws_open(socket_manager):
-    print('Subscribed to ', SYMBOL, 'interval=', INTERVAL)
-
-def on_ws_close(socket_manager):
-    print('websocket connection closed, reopening')
-    socket_manager.create_ws_connection()
-
 rest_client = Spot(api_key=api_key, api_secret=api_secret, base_url=url)
-ws_client = SpotWebsocketStreamClient(
-    on_message=message_handler, stream_url=ws_url, on_open=on_ws_open, on_close=on_ws_close, on_error=on_ws_close)
-def get_balance():
-    print(rest_client.account())
-
-ws_client.kline(symbol=SYMBOL, interval=INTERVAL)
-
+schedule.every(20).seconds.do(run_algorithm)
+while True:
+    schedule.run_pending()
+    time.sleep(1)
 
 #python3 trade.py
