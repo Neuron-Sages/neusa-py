@@ -172,7 +172,7 @@ def run_algorithm():
         #    opened_order = new_order_params
 
 rest_client = Spot(api_key=api_key, api_secret=api_secret, base_url=url)
-schedule.every(20).seconds.do(run_algorithm)
+schedule.every().minute.do(run_algorithm)
 while True:
     schedule.run_pending()
     time.sleep(1)
