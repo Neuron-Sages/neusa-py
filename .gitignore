@@ -4,3 +4,8 @@ config.init
 model.pkl
 log.txt
 /.vscode
+/.lsp
+/.clj-kondo
+/.calva
+/.cpcache
+.nrepl-port
