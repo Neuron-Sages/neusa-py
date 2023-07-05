@@ -54,8 +54,6 @@
                                 :vloss      0.788078}
   :CKSPs_10_3_20               {:last-erate 0.311765
                                 :vloss      0.801806}
-  :coppock                     {:last-erate 0.294118
-                                :vloss      0.727974}
   :cti                         {:last-erate 0.317647
                                 :vloss      0.671152}
   :decreasing                  {:last-erate 0.294118
@@ -102,8 +100,6 @@
                                 :vloss      0.784200}
   :KCLe_20_2                   {:last-erate 0.376471
                                 :vloss      0.876144}
-  :KCBe_20_2                   {:last-erate 0.311765
-                                :vloss      0.733078}
   :KCUe_20_2                   {:last-erate 0.341176
                                 :vloss      0.902357}
   :K_9_3                       {:last-erate 0.358824
@@ -180,10 +176,6 @@
                                 :vloss      0.843856}
   :SQZPRO_ON_NORMAL            {:last-erate 0.300000
                                 :vloss      0.828369}
-  :SQZPRO_ON_NARROW            {:last-erate 0.335294
-                                :vloss      0.725482}
-  :SQZPRO_NO                   {:last-erate 0.258824
-                                :vloss      0.735660}
   :ssf                         {:last-erate 0.317647
                                 :vloss      0.781842}
   :STCstoch_10_12_26_0.5       {:last-erate 0.388235
@@ -214,12 +206,8 @@
                                 :vloss      0.883436}
   :TOS_STDEVALL_L_3            {:last-erate 0.358824
                                 :vloss      0.889039}
-  :trima                       {:last-erate 0.329412
-                                :vloss      0.720050}
   :TRIXs_30_9                  {:last-erate 0.347059
                                 :vloss      0.874109}
-  :TSIs_13_25_13               {:last-erate 0.288235
-                                :vloss      0.685135}
   :ui                          {:last-erate 0.347059
                                 :vloss      0.850252}
   :variance                    {:last-erate 0.282353
@@ -232,8 +220,6 @@
                                 :vloss      0.902433}
   :wcp                         {:last-erate 0.394118
                                 :vloss      0.887941}
-  :wma                         {:last-erate 0.294118
-                                :vloss      0.692244}
   :zlma                         {:last-erate 0.335294
                                  :vloss      0.836070}
 
