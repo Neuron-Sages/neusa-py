@@ -41,7 +41,7 @@ def denoise(data):
         return data
     
 
-df = pd.read_csv("https://drive.google.com/file/d/1zzvusYoCLq1Kt7OLf8cLNB6rPDedjDVT/view?usp=sharing", header=0,
+df = pd.read_csv("./binance.csv", header=0,
                  names=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 df['timestamp'] = df['timestamp'].apply(lambda x: pd.to_datetime(x))
 
