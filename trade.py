@@ -10,7 +10,9 @@ import pywt
 import pywt.data
 import schedule
 from datetime import datetime
-#import firebase_admin
+import numpy as np
+import pandas as pd
+import pandas_ta as ta
 from configparser import ConfigParser
 from fastai.vision.all import *
 
@@ -18,7 +20,7 @@ SYMBOL = 'BTCUSDT'
 INTERVAL = '1m'
 INPUT_SIZE = 30
 RAW_INPUT_SIZE = 100
-THRESHOLD = 0.97
+THRESHOLD = 0.9
 TRADING_PERCENT = 0.1
 INITIAL_USD_BALANCE = 1000
 STOP_PROFIT = 0.004
@@ -41,27 +43,49 @@ def denoise(data):
     else:
         return data
     
+
+ind_list = ['qstick', 't3', 'cti', 'mad', 'ha',
+            'squeeze', 'aroon', 'bbands', 'kc', 'vwap', 'stoch']
+ind_columns = ['qstick', 't3', 'cti', 'mad', 'HA_low', 'SQZ_20_2.0_20_1.5',
+               'AROONU_14', 'BBU_5_2.0', 'KCBe_20_2', 'vwap', 'STOCHd_14_3_3']
+    
 def get_input_image(data):
     np_data = np.array(data)
-    df = pd.DataFrame(data=np_data[:, 1:6],
+    df = pd.DataFrame(data=np_data[:, 0:6],
                       index=np_data[:, 0],
-                      columns=np_data[0, 1:6])
-    df.columns = ['open', 'high', 'low', 'close', 'volume']
-    df['open'] = pd.to_numeric(df['open'])
-    df['high'] = pd.to_numeric(df['high'])
-    df['low'] = pd.to_numeric(df['low'])
-    df['close'] = pd.to_numeric(df['close'])
-    df['volume'] = pd.to_numeric(df['volume'])
-    df_denoised_input = denoise(df.close)
+                      columns=np_data[0, 0:6])
+    df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+    df['open'] = denoise(pd.to_numeric(df['open']))
+    df['high'] = denoise(pd.to_numeric(df['high']))
+    df['low'] = denoise(pd.to_numeric(df['low']))
+    df['close'] = denoise(pd.to_numeric(df['close']))
+    df['volume'] = denoise(pd.to_numeric(df['volume']))
+    df['timestamp'].apply(lambda x: pd.to_datetime(x))
+    df.set_index(pd.DatetimeIndex(
+        df["timestamp"]), inplace=True)
+    for indi in ind_list:
+        indi_fn = getattr(df.ta, indi)
+        data = indi_fn()
+        if isinstance(data, pd.Series):
+            df[indi] = data
+        else:
+            for col_name in data.columns.to_numpy().tolist():
+                df[col_name] = data[col_name]
+
     gaf_transformer = GramianAngularField(
         method='difference', image_size=INPUT_SIZE)
-    df_gaf_input = gaf_transformer.fit_transform(
-        df_denoised_input[-INPUT_SIZE:].reshape(1, -1))
+    all_input_cols = ['open', 'high', 'low', 'close', 'volume'] + ind_columns
+    for col_name in all_input_cols:
+        df['gaf_' + col_name] = gaf_transformer.fit_transform(
+            df[col_name][-INPUT_SIZE:].reshape(1, -1)).squeeze()
+    inputs_list = [df['gaf_' + col_name] for col_name in all_input_cols]
+    rows_list = [inputs_list[i:i + 4] for i in range(0, len(inputs_list), 4)]
+    image_rows = [np.concatenate(row) for row in rows_list]
+    image = np.concatenate(image_rows, axis=1)
     images_path = './images/'
     if not os.path.exists(images_path):
         os.makedirs(images_path)
-    data = df_gaf_input.squeeze()
-    matplotlib.image.imsave(images_path + 'input' + '.png', data)
+    matplotlib.image.imsave(images_path + 'input' + '.png', image)
     files = get_image_files(images_path)
     return files[0]
 
