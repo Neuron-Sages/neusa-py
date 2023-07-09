@@ -60,7 +60,8 @@ def get_input_image(data):
     df['low'] = denoise(pd.to_numeric(df['low']))
     df['close'] = denoise(pd.to_numeric(df['close']))
     df['volume'] = denoise(pd.to_numeric(df['volume']))
-    df['timestamp'].apply(lambda x: pd.to_datetime(x))
+    df['timestamp'] = pd.to_numeric(df['timestamp'])
+    df['timestamp'].apply(lambda x: pd.to_datetime(x, unit='ms'))
     df.set_index(pd.DatetimeIndex(
         df["timestamp"]), inplace=True)
     for indi in ind_list:
@@ -75,10 +76,8 @@ def get_input_image(data):
     gaf_transformer = GramianAngularField(
         method='difference', image_size=INPUT_SIZE)
     all_input_cols = ['open', 'high', 'low', 'close', 'volume'] + ind_columns
-    for col_name in all_input_cols:
-        df['gaf_' + col_name] = gaf_transformer.fit_transform(
-            df[col_name][-INPUT_SIZE:].reshape(1, -1)).squeeze()
-    inputs_list = [df['gaf_' + col_name] for col_name in all_input_cols]
+    inputs_list = [gaf_transformer.fit_transform(
+        df[col_name][-INPUT_SIZE:].to_numpy().reshape(1, -1)).squeeze() for col_name in all_input_cols]
     rows_list = [inputs_list[i:i + 4] for i in range(0, len(inputs_list), 4)]
     image_rows = [np.concatenate(row) for row in rows_list]
     image = np.concatenate(image_rows, axis=1)
