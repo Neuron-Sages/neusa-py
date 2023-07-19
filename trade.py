@@ -25,6 +25,7 @@ STOP_PROFIT = 0.004
 STOP_LOSS = 0.004
 ORDER_LIFE = 15
 
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 config_file = "config.test.ini"
 model = load_learner(fname='model3.pkl', cpu=True)
 
@@ -71,7 +72,7 @@ def get_input_image(data):
         method='difference', image_size=INPUT_SIZE)
     all_input_cols = ['open', 'high', 'low', 'close', 'volume'] + ind_columns
     inputs_list = [gaf_transformer.fit_transform(
-        df[col_name][-INPUT_SIZE].reshape(1, -1)).squeeze() for col_name in all_input_cols]
+        df[col_name][-INPUT_SIZE:].to_numpy().reshape(1, -1)).squeeze() for col_name in all_input_cols]
     rows_list = [inputs_list[i:i + 4] for i in range(0, len(inputs_list), 4)]
     image_rows = [np.concatenate(row) for row in rows_list]
     image = np.concatenate(image_rows, axis=1)
@@ -107,8 +108,10 @@ def get_new_order_params(prediction, price):
     stop_profit, stop_loss = get_stops(prediction, price)
     quantity = round(TRADING_PERCENT * INITIAL_USD_BALANCE / price, 4)
     best_params = rest_client.book_ticker(symbol=SYMBOL)
-    logging.debug("best_params: %s", best_params)
-    best_price = best_params['price']
+    logging.info("best_params: %s", best_params)
+    best_price = best_params['bidPrice']
+    if prediction == 'buy':
+        best_price = best_params['askPrice']
     return  [{
             'symbol': SYMBOL,
             'side': prediction.upper(),
@@ -126,18 +129,18 @@ def get_new_order_params(prediction, price):
 
 def run_algorithm():
     opened_orders = rest_client.get_open_orders(symbol=SYMBOL)
-    logging.debug('opened_orders: %s', opened_orders)
+    logging.info('opened_orders: %s', opened_orders)
     if len(opened_orders) == 0:
         input = rest_client.klines(SYMBOL, INTERVAL, limit=RAW_INPUT_SIZE)
         kline = input[-1]
         price = float(kline[4])
         prediction, confidence = predict(input)
-        if confidence >= THRESHOLD and prediction != 'wait':
+        if confidence >= THRESHOLD:
             new_order_params = get_new_order_params(prediction, price)
-            response1 = rest_client.new_order(new_order_params[0])
-            response2 = rest_client.new_order(new_order_params[1])
-            logging.debug("response1: %s", response1)
-            logging.debug("response2: %s", response2)
+            response1 = rest_client.new_order(**new_order_params[0])
+            response2 = rest_client.new_order(**new_order_params[1])
+            logging.info("response1: %s", response1)
+            logging.info("response2: %s", response2)
 
 schedule.every().minute.do(run_algorithm)
 while True:
