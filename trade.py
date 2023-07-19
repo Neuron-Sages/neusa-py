@@ -25,13 +25,24 @@ STOP_PROFIT = 0.004
 STOP_LOSS = 0.004
 ORDER_LIFE = 15
 
-config_file = "config.ini"
-    
+config_file = "config.test.ini"
+model = load_learner(fname='model3.pkl', cpu=True)
+
+def get_params():
+    config = ConfigParser()
+    config_file_path = os.path.join(
+        os.path.abspath(''), config_file
+    )
+    config.read(config_file_path)
+    return config["keys"]["api_key"], config["keys"]["api_secret"], config["keys"]["url"]
+
+api_key, api_secret, url = get_params()
+rest_client = Spot(api_key=api_key, api_secret=api_secret, base_url=url)
+
 ind_list = ['qstick', 't3', 'cti', 'mad', 'ha',
             'squeeze', 'aroon', 'bbands', 'kc', 'vwap', 'stoch']
 ind_columns = ['QS_10', 'T3_10_0.7', 'CTI_12', 'MAD_30', 'HA_low', 'SQZ_20_2.0_20_1.5',
                'AROONU_14', 'BBU_5_2.0', 'KCBe_20_2', 'VWAP_D', 'STOCHd_14_3_3']
-
     
 def get_input_image(data):
     np_data = np.array(data)
@@ -60,7 +71,7 @@ def get_input_image(data):
         method='difference', image_size=INPUT_SIZE)
     all_input_cols = ['open', 'high', 'low', 'close', 'volume'] + ind_columns
     inputs_list = [gaf_transformer.fit_transform(
-        df[col_name][-INPUT_SIZE].to_numpy().reshape(1, -1)).squeeze() for col_name in all_input_cols]
+        df[col_name][-INPUT_SIZE].reshape(1, -1)).squeeze() for col_name in all_input_cols]
     rows_list = [inputs_list[i:i + 4] for i in range(0, len(inputs_list), 4)]
     image_rows = [np.concatenate(row) for row in rows_list]
     image = np.concatenate(image_rows, axis=1)
@@ -70,19 +81,6 @@ def get_input_image(data):
     matplotlib.image.imsave(images_path + 'input' + '.png', image)
     files = get_image_files(images_path)
     return files[0]
-
-def get_params():
-    config = ConfigParser()
-    config_file_path = os.path.join(
-        os.path.abspath(''), config_file
-    )
-    config.read(config_file_path)
-    return config["keys"]["api_key"], config["keys"]["api_secret"], config["keys"]["url"], config["keys"]["ws_url"]
-
-
-api_key, api_secret, url, ws_url = get_params()
-
-model = load_learner(fname='model.pkl', cpu=True)
 
 def predict(input):
     prediction, t_index, t_confidence_array = model.predict(get_input_image(input))
@@ -99,85 +97,48 @@ def get_stops(prediction, price):
     else:
         return price - stop_profit_shift, price + stop_loss_shift
     
+def change_side(side):
+    if side == 'sell':
+        return 'buy'
+    else:
+        return 'sell'
+    
 def get_new_order_params(prediction, price):
     stop_profit, stop_loss = get_stops(prediction, price)
     quantity = round(TRADING_PERCENT * INITIAL_USD_BALANCE / price, 4)
-    return {
-        'binance_order': {
+    best_params = rest_client.book_ticker(symbol=SYMBOL)
+    logging.debug("best_params: %s", best_params)
+    best_price = best_params['price']
+    return  [{
             'symbol': SYMBOL,
             'side': prediction.upper(),
             'type': 'MARKET',
-            'quantity': quantity
+            'quantity': quantity,
+            'price': best_price
         },
-        'metadata': {
-            'stop_loss': stop_loss,
-            'stop_profit': stop_profit,
-            'price': price,
-            'prediction': prediction
-        }
-    }
-
-
-start_time_string = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-total_profit_orders_count = 0
-total_loss_orders_count = 0
-opened_order = None
+        {
+            'symbol': SYMBOL,
+            'side': change_side(prediction).upper(),
+            'type': 'LIMIT',
+            'quantity': quantity,
+            'price': stop_profit
+        }]
 
 def run_algorithm():
-    global opened_order
-    global total_loss_orders_count
-    global total_profit_orders_count
-    global start_time_string
-    input = rest_client.klines(SYMBOL, INTERVAL, limit=RAW_INPUT_SIZE)
-    kline = input[-1]
-    price = float(kline[4])
-    prediction, confidence = predict(input)
-    if confidence >= THRESHOLD and prediction != 'wait':
-        new_order_params = get_new_order_params(prediction, price)
-        now = datetime.now()
-        now_string = now.strftime("%d/%m/%Y %H:%M:%S")
-        if opened_order == None:
-            opened_order = new_order_params
-            print("I have opened an order now:",
-                opened_order['metadata']['prediction'])
-        else:
-            old_metadata = opened_order['metadata']
-            old_side = old_metadata['prediction']
-            old_price = old_metadata['price']
-            new_metadata = new_order_params['metadata']
-            new_side = new_metadata['prediction']
-            new_price = new_metadata['price']
-            if old_side != new_side and new_side != 'wait':
-                side = old_side
-                price = new_price
-                if side == 'buy':
-                    if price > old_price:
-                        print('Closing buy order with profit')
-                        total_profit_orders_count = 1 + total_profit_orders_count
-                        opened_order = None
-                    if price <= old_price:
-                        print('Closing buy order with loss')
-                        total_loss_orders_count = 1 + total_loss_orders_count
-                        opened_order = None
-                if side == 'sell':
-                    if price < old_price:
-                        print('Closing sell order with profit')
-                        total_profit_orders_count = 1 + total_profit_orders_count
-                        opened_order = None
-                    if price >= old_price:
-                        print('Closing sell order with loss')
-                        total_loss_orders_count = 1 + total_loss_orders_count
-                        opened_order = None
-                opened_order = new_order_params
-                with open('log.txt', 'w') as f:
-                    print('From ', start_time_string, 'to', now_string, 'total_profit_orders_count=', total_profit_orders_count, 'total_loss_orders_count=', total_loss_orders_count, file=f)
-        #response = rest_client.new_order(**new_order_params['binance_order'])
-        #print(response)
-        #status = response['status']
-        #if status == 'FILLED':
-        #    opened_order = new_order_params
+    opened_orders = rest_client.get_open_orders(symbol=SYMBOL)
+    logging.debug('opened_orders: %s', opened_orders)
+    if len(opened_orders) == 0:
+        input = rest_client.klines(SYMBOL, INTERVAL, limit=RAW_INPUT_SIZE)
+        kline = input[-1]
+        price = float(kline[4])
+        prediction, confidence = predict(input)
+        if confidence >= THRESHOLD and prediction != 'wait':
+            new_order_params = get_new_order_params(prediction, price)
+            response1 = rest_client.new_order(new_order_params[0])
+            response2 = rest_client.new_order(new_order_params[1])
+            logging.debug("response1: %s", response1)
+            logging.debug("response2: %s", response2)
 
-rest_client = Spot(api_key=api_key, api_secret=api_secret, base_url=url)
 schedule.every().minute.do(run_algorithm)
 while True:
     schedule.run_pending()
