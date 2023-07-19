@@ -6,8 +6,6 @@ from pyts.image import GramianAngularField
 import logging
 import json
 import os
-import pywt
-import pywt.data
 import schedule
 from datetime import datetime
 import numpy as np
@@ -25,29 +23,15 @@ TRADING_PERCENT = 0.1
 INITIAL_USD_BALANCE = 1000
 STOP_PROFIT = 0.004
 STOP_LOSS = 0.004
-ORDER_LIFE = 5
+ORDER_LIFE = 15
 
-#config_logging(logging, logging.DEBUG)
 config_file = "config.ini"
-#firebase_app = firebase_admin.initialize_app()
-
-wavelet_type = 'sym15'
-w = pywt.Wavelet(wavelet_type)
-def denoise(data):
-    if len(data) > 0:
-        maxlev = pywt.dwt_max_level(len(data), w.dec_len)
-        coeffs = pywt.wavedec(data, wavelet_type, level=maxlev)
-        coeffs[-1] = np.zeros_like(coeffs[-1])
-        datarec = pywt.waverec(coeffs, wavelet_type)
-        return datarec
-    else:
-        return data
     
-
 ind_list = ['qstick', 't3', 'cti', 'mad', 'ha',
             'squeeze', 'aroon', 'bbands', 'kc', 'vwap', 'stoch']
-ind_columns = ['qstick', 't3', 'cti', 'mad', 'HA_low', 'SQZ_20_2.0_20_1.5',
-               'AROONU_14', 'BBU_5_2.0', 'KCBe_20_2', 'vwap', 'STOCHd_14_3_3']
+ind_columns = ['QS_10', 'T3_10_0.7', 'CTI_12', 'MAD_30', 'HA_low', 'SQZ_20_2.0_20_1.5',
+               'AROONU_14', 'BBU_5_2.0', 'KCBe_20_2', 'VWAP_D', 'STOCHd_14_3_3']
+
     
 def get_input_image(data):
     np_data = np.array(data)
@@ -55,29 +39,28 @@ def get_input_image(data):
                       index=np_data[:, 0],
                       columns=np_data[0, 0:6])
     df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-    df['open'] = denoise(pd.to_numeric(df['open']))
-    df['high'] = denoise(pd.to_numeric(df['high']))
-    df['low'] = denoise(pd.to_numeric(df['low']))
-    df['close'] = denoise(pd.to_numeric(df['close']))
-    df['volume'] = denoise(pd.to_numeric(df['volume']))
+    df['open'] = pd.to_numeric(df['open'])
+    df['high'] = pd.to_numeric(df['high'])
+    df['low'] = pd.to_numeric(df['low'])
+    df['close'] = pd.to_numeric(df['close'])
+    df['volume'] = pd.to_numeric(df['volume'])
     df['timestamp'] = pd.to_numeric(df['timestamp'])
     df['timestamp'].apply(lambda x: pd.to_datetime(x, unit='ms'))
     df.set_index(pd.DatetimeIndex(
         df["timestamp"]), inplace=True)
     for indi in ind_list:
         indi_fn = getattr(df.ta, indi)
-        data = indi_fn()
-        if isinstance(data, pd.Series):
-            df[indi] = data
-        else:
-            for col_name in data.columns.to_numpy().tolist():
-                df[col_name] = data[col_name]
+        indi_fn(append=True)
+
+    for col_name in ind_columns:
+        df[col_name].replace([np.inf, -np.inf], np.nan, inplace=True)
+        df[col_name].fillna(value=0, inplace=True)
 
     gaf_transformer = GramianAngularField(
         method='difference', image_size=INPUT_SIZE)
     all_input_cols = ['open', 'high', 'low', 'close', 'volume'] + ind_columns
     inputs_list = [gaf_transformer.fit_transform(
-        df[col_name][-INPUT_SIZE:].to_numpy().reshape(1, -1)).squeeze() for col_name in all_input_cols]
+        df[col_name][-INPUT_SIZE].to_numpy().reshape(1, -1)).squeeze() for col_name in all_input_cols]
     rows_list = [inputs_list[i:i + 4] for i in range(0, len(inputs_list), 4)]
     image_rows = [np.concatenate(row) for row in rows_list]
     image = np.concatenate(image_rows, axis=1)
