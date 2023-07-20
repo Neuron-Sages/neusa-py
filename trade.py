@@ -24,10 +24,12 @@ INITIAL_USD_BALANCE = 1000
 STOP_PROFIT = 0.004
 STOP_LOSS = 0.004
 ORDER_LIFE = 15
+OPENED_ORDERS_LIMIT = 0
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 config_file = "config.test.ini"
 model = load_learner(fname='model3.pkl', cpu=True)
+balance = INITIAL_USD_BALANCE
 
 def get_params():
     config = ConfigParser()
@@ -91,8 +93,8 @@ def predict(input):
     return prediction, confidence
 
 def get_stops(prediction, price):
-    stop_loss_shift = int(price / 100.0 * STOP_LOSS)
-    stop_profit_shift = int(price / 100.0 * STOP_PROFIT)
+    stop_loss_shift = int(price * STOP_LOSS)
+    stop_profit_shift = int(price * STOP_PROFIT)
     if prediction == 'buy':
         return price + stop_profit_shift, price - stop_loss_shift
     else:
@@ -105,32 +107,43 @@ def change_side(side):
         return 'sell'
     
 def get_new_order_params(prediction, price):
+    global balance
     stop_profit, stop_loss = get_stops(prediction, price)
     quantity = round(TRADING_PERCENT * INITIAL_USD_BALANCE / price, 4)
     best_params = rest_client.book_ticker(symbol=SYMBOL)
-    logging.info("best_params: %s", best_params)
+    order_book = rest_client.depth(symbol=SYMBOL)
+    logging.info("order_book: %s", order_book[0:10])
+    logging.info("best_params2: %s", best_params)
     best_price = best_params['bidPrice']
+    logging.info("price= %s", price)
+    logging.info("stop_profit= %s", stop_profit)
     if prediction == 'buy':
         best_price = best_params['askPrice']
+    potential_profit = quantity * stop_profit - quantity * best_price
+    balance += potential_profit
     return  [{
             'symbol': SYMBOL,
             'side': prediction.upper(),
-            'type': 'MARKET',
+            'type': 'LIMIT',
             'quantity': quantity,
-            'price': best_price
+            'price': best_price,
+            'timeInForce': 'GTC'
         },
         {
             'symbol': SYMBOL,
             'side': change_side(prediction).upper(),
             'type': 'LIMIT',
             'quantity': quantity,
-            'price': stop_profit
+            'price': stop_profit,
+            'timeInForce': 'GTC'
         }]
 
 def run_algorithm():
+    global balance
     opened_orders = rest_client.get_open_orders(symbol=SYMBOL)
     logging.info('opened_orders: %s', opened_orders)
-    if len(opened_orders) == 0:
+    if len(opened_orders) <= OPENED_ORDERS_LIMIT:
+        logging.info("balance: %s", balance)
         input = rest_client.klines(SYMBOL, INTERVAL, limit=RAW_INPUT_SIZE)
         kline = input[-1]
         price = float(kline[4])
