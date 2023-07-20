@@ -105,20 +105,31 @@ def change_side(side):
         return 'buy'
     else:
         return 'sell'
-    
+
+
+def take_first(elem):
+    return elem[0]
+
 def get_new_order_params(prediction, price):
     global balance
     stop_profit, stop_loss = get_stops(prediction, price)
     quantity = round(TRADING_PERCENT * INITIAL_USD_BALANCE / price, 4)
     best_params = rest_client.book_ticker(symbol=SYMBOL)
-    order_book = rest_client.depth(symbol=SYMBOL)
-    logging.info("order_book: %s", order_book[0:10])
+    #order_book = rest_client.depth(symbol=SYMBOL, limit=5000)
+    #best_bid = order_book['bids']
+    #best_bid.sort(key=take_first, reverse=True)
+    #best_bid = best_bid[0][0]
+    #best_ask = order_book['asks']
+    #best_ask.sort(key=take_first)
+    #best_ask = best_ask[0][0]
+    #logging.info("order_book best bid: %s", best_bid)
+    #logging.info("order_book best ask: %s", best_ask)
     logging.info("best_params2: %s", best_params)
-    best_price = best_params['bidPrice']
+    best_price = float(best_params['bidPrice'])
     logging.info("price= %s", price)
     logging.info("stop_profit= %s", stop_profit)
     if prediction == 'buy':
-        best_price = best_params['askPrice']
+        best_price = float(best_params['askPrice'])
     potential_profit = quantity * stop_profit - quantity * best_price
     balance += potential_profit
     return  [{
